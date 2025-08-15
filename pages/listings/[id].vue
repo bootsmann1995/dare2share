@@ -70,8 +70,18 @@
             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 capitalize">
               {{ listing.category }}
             </span>
-            <span v-if="listing.status === 'active'" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-              Available
+            <!-- Rental Status Badge -->
+            <span v-if="listing.status === 'active' && listing.rental_status === 'available'" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+              ✅ Available for rent
+            </span>
+            <span v-else-if="listing.status === 'active' && listing.rental_status === 'rented_out'" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+              🔒 Currently rented out
+            </span>
+            <span v-else-if="listing.status === 'active' && listing.rental_status === 'maintenance'" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+              🔧 Under maintenance
+            </span>
+            <span v-else class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+              Inactive
             </span>
           </div>
           
@@ -99,8 +109,27 @@
             Security deposit: ${{ listing.security_deposit }}
           </div>
           
-          <div v-if="listing.min_rental_days > 1" class="text-sm text-gray-600 mb-4">
+          <div v-if="listing.min_rental_days > 1" class="text-sm text-gray-600 mb-2">
             Minimum rental: {{ listing.min_rental_days }} days
+          </div>
+          
+          <!-- Rental Status Information -->
+          <div v-if="listing.rental_status === 'rented_out' && listing.rented_until" class="p-3 bg-red-50 border border-red-200 rounded-lg mb-4">
+            <div class="flex items-center text-red-800 text-sm font-medium mb-1">
+              🔒 Currently Rented Out
+            </div>
+            <div class="text-red-600 text-xs">
+              Available again: {{ new Date(listing.rented_until).toLocaleDateString() }}
+            </div>
+          </div>
+          
+          <div v-else-if="listing.rental_status === 'maintenance'" class="p-3 bg-yellow-50 border border-yellow-200 rounded-lg mb-4">
+            <div class="flex items-center text-yellow-800 text-sm font-medium">
+              🔧 Under Maintenance
+            </div>
+            <div v-if="listing.rental_notes" class="text-yellow-600 text-xs mt-1">
+              {{ listing.rental_notes }}
+            </div>
           </div>
           
           <div class="flex gap-2 mb-4">
@@ -119,13 +148,26 @@
             </span>
           </div>
           
-          <button 
-            v-if="!isOwner"
-            class="w-full btn-primary"
-            @click="contactOwner"
-          >
-            Contact Owner
-          </button>
+          <!-- Contact Owner / Rental Request Button -->
+          <div v-if="!isOwner">
+            <button 
+              v-if="listing.rental_status === 'available'"
+              class="w-full btn-primary"
+              @click="contactOwner"
+            >
+              Contact Owner for Rental
+            </button>
+            
+            <button 
+              v-else
+              disabled
+              class="w-full bg-gray-300 text-gray-500 py-3 px-4 rounded-lg font-medium cursor-not-allowed"
+            >
+              <span v-if="listing.rental_status === 'rented_out'">🔒 Currently Unavailable</span>
+              <span v-else-if="listing.rental_status === 'maintenance'">🔧 Under Maintenance</span>
+              <span v-else>Not Available</span>
+            </button>
+          </div>
           
           <div v-else class="text-center text-gray-600">
             <p class="text-sm">This is your listing</p>
@@ -138,7 +180,7 @@
         <!-- Owner Info -->
         <div class="border-t pt-6">
           <h3 class="text-lg font-semibold text-gray-900 mb-3">Listed by</h3>
-          <div class="flex items-center">
+          <div class="flex items-center mb-4">
             <div class="w-12 h-12 bg-gray-300 rounded-full flex items-center justify-center mr-3">
               <svg class="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
@@ -148,6 +190,11 @@
               <p class="font-medium text-gray-900">{{ listing.owner_name || 'Anonymous' }}</p>
               <p class="text-sm text-gray-600">Member since {{ formatDate(listing.created_at) }}</p>
             </div>
+          </div>
+          
+          <!-- Owner Rating -->
+          <div v-if="user && listing.owner_id">
+            <UserRating :user-id="listing.owner_id" />
           </div>
         </div>
 

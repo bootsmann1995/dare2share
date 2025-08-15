@@ -8,10 +8,21 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
           </svg>
         </div>
-        <div>
+        <div class="flex-1">
           <h1 class="text-2xl font-bold text-gray-900">{{ user?.user_metadata?.full_name || 'User' }}</h1>
           <p class="text-gray-600">{{ user?.email }}</p>
           <p class="text-sm text-gray-500">Member since {{ formatDate(user?.created_at) }}</p>
+          
+          <!-- User Rating Display -->
+          <div v-if="userStats" class="flex items-center mt-2">
+            <StarRating :rating="userStats.average_rating" :readonly="true" :size="'sm'" />
+            <span class="ml-2 text-sm text-gray-600">
+              {{ userStats.average_rating.toFixed(1) }} ({{ userStats.total_ratings }} {{ userStats.total_ratings === 1 ? 'rating' : 'ratings' }})
+            </span>
+          </div>
+          <div v-else-if="userStats && userStats.total_ratings === 0" class="text-sm text-gray-500 mt-2">
+            No ratings yet
+          </div>
         </div>
       </div>
     </div>
@@ -40,6 +51,17 @@
           ]"
         >
           My Rentals
+        </button>
+        <button
+          @click="activeTab = 'ratings'"
+          :class="[
+            'py-2 px-1 border-b-2 font-medium text-sm',
+            activeTab === 'ratings' 
+              ? 'border-blue-500 text-blue-600' 
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          ]"
+        >
+          Ratings
         </button>
         <button
           @click="activeTab = 'settings'"
@@ -103,14 +125,30 @@
           <p class="text-gray-600 mb-3 line-clamp-2">{{ listing.description }}</p>
           <div class="flex justify-between items-center mb-3">
             <span class="text-xl font-bold text-blue-600">${{ listing.price_per_day }}/day</span>
-            <span class="px-2 py-1 text-xs rounded-full" :class="getStatusClass(listing.status)">
-              {{ listing.status }}
-            </span>
+            <div class="flex gap-1">
+              <span class="px-2 py-1 text-xs rounded-full" :class="getStatusClass(listing.status)">
+                {{ listing.status }}
+              </span>
+              <span v-if="listing.status === 'active'" class="px-2 py-1 text-xs rounded-full" :class="getRentalStatusClass(listing.rental_status)">
+                {{ getRentalStatusText(listing.rental_status) }}
+              </span>
+            </div>
+          </div>
+          
+          <!-- Rental Status Details -->
+          <div v-if="listing.rental_status === 'rented_out' && listing.rented_until" class="mb-3 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
+            🔒 Rented until {{ new Date(listing.rented_until).toLocaleDateString() }}
+          </div>
+          <div v-else-if="listing.rental_status === 'maintenance'" class="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-700">
+            🔧 Under maintenance
           </div>
           
           <!-- Action Buttons (positioned above the overlay) -->
           <div class="flex gap-2 relative z-20">
-            <button class="btn-secondary text-sm flex-1" @click.stop>
+            <button 
+              class="btn-secondary text-sm flex-1" 
+              @click.stop="navigateTo(`/listings/edit/${listing.id}`)"
+            >
               Edit
             </button>
             <button 
@@ -187,6 +225,13 @@
       </div>
     </div>
 
+    <div v-else-if="activeTab === 'ratings'">
+      <h2 class="text-xl font-semibold text-gray-900 mb-6">User Ratings</h2>
+      
+      <!-- User Rating Component -->
+      <UserRating :user-id="user?.id" />
+    </div>
+
     <div v-else-if="activeTab === 'settings'">
       <h2 class="text-xl font-semibold text-gray-900 mb-6">Account Settings</h2>
       
@@ -257,6 +302,7 @@ const user = useSupabaseUser()
 const activeTab = ref('listings')
 const userListings = ref([])
 const loadingListings = ref(false)
+const userStats = ref(null)
 
 // Delete functionality
 const showDeleteModal = ref(false)
@@ -383,10 +429,33 @@ const deleteListing = async () => {
   }
 }
 
+// Fetch user rating statistics
+const fetchUserStats = async () => {
+  if (!user.value) return
+  
+  try {
+    const { data, error } = await supabase
+      .from('user_rating_stats')
+      .select('*')
+      .eq('rated_user_id', user.value.id)
+      .single()
+
+    if (error && error.code !== 'PGRST116') {
+      throw error
+    }
+
+    userStats.value = data || { total_ratings: 0, average_rating: 0 }
+  } catch (err) {
+    console.error('Error fetching user stats:', err)
+    userStats.value = { total_ratings: 0, average_rating: 0 }
+  }
+}
+
 // Load listings when component mounts and user is available
 watch(user, (newUser) => {
   if (newUser) {
     loadUserListings()
+    fetchUserStats()
   }
 }, { immediate: true })
 
@@ -405,12 +474,38 @@ const getStatusClass = (status) => {
   switch (status) {
     case 'active':
       return 'bg-green-100 text-green-800'
-    case 'pending':
-      return 'bg-yellow-100 text-yellow-800'
     case 'inactive':
       return 'bg-gray-100 text-gray-800'
+    case 'draft':
+      return 'bg-yellow-100 text-yellow-800'
     default:
       return 'bg-gray-100 text-gray-800'
+  }
+}
+
+const getRentalStatusClass = (rentalStatus) => {
+  switch (rentalStatus) {
+    case 'available':
+      return 'bg-green-100 text-green-800'
+    case 'rented_out':
+      return 'bg-red-100 text-red-800'
+    case 'maintenance':
+      return 'bg-yellow-100 text-yellow-800'
+    default:
+      return 'bg-gray-100 text-gray-800'
+  }
+}
+
+const getRentalStatusText = (rentalStatus) => {
+  switch (rentalStatus) {
+    case 'available':
+      return '✅ Available'
+    case 'rented_out':
+      return '🔒 Rented'
+    case 'maintenance':
+      return '🔧 Maintenance'
+    default:
+      return 'Unknown'
   }
 }
 

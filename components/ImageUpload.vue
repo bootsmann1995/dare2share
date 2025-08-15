@@ -100,6 +100,10 @@ const props = defineProps({
     type: Array,
     default: () => []
   },
+  existingImages: {
+    type: Array,
+    default: () => []
+  },
   maxImages: {
     type: Number,
     default: 5
@@ -121,11 +125,18 @@ const uploadProgress = ref(0)
 const error = ref('')
 const isDragging = ref(false)
 
+// Combine existing images with newly uploaded images
+const allImages = computed(() => {
+  return [...(props.existingImages || []), ...(props.modelValue || [])]
+})
+
 // Use computed property to avoid reactive loops
 const images = computed({
-  get: () => props.modelValue || [],
+  get: () => allImages.value,
   set: (newValue) => {
-    emit('update:modelValue', newValue)
+    // Only emit the newly uploaded images (not existing ones)
+    const newlyUploaded = newValue.filter(img => !props.existingImages.some(existing => existing.url === img.url))
+    emit('update:modelValue', newlyUploaded)
   }
 })
 
@@ -151,7 +162,7 @@ const uploadFiles = async (files) => {
   }
 
   // Check if adding these files would exceed the limit
-  if (images.value.length + files.length > props.maxImages) {
+  if (allImages.value.length + files.length > props.maxImages) {
     error.value = `You can only upload up to ${props.maxImages} images`
     return
   }
@@ -198,8 +209,9 @@ const uploadFiles = async (files) => {
       uploadProgress.value = Math.round(((i + 1) / uploadPromises.length) * 100)
     }
 
-    // Add to images array
-    images.value.push(...uploadedImages)
+    // Add to newly uploaded images array
+    const currentUploaded = props.modelValue || []
+    emit('update:modelValue', [...currentUploaded, ...uploadedImages])
 
   } catch (err) {
     error.value = err.message || 'Failed to upload images'
@@ -210,30 +222,99 @@ const uploadFiles = async (files) => {
 }
 
 const removeImage = async (index) => {
-  const image = images.value[index]
+  const image = allImages.value[index]
+  const existingCount = props.existingImages.length
   
   try {
-    // Delete from Supabase Storage
-    const { error: deleteError } = await supabase.storage
-      .from('listing-images')
-      .remove([image.path])
+    if (index < existingCount) {
+      // Removing an existing image - delete from database and storage
+      if (image.id) {
+        const { error: dbError } = await supabase
+          .from('listing_images')
+          .delete()
+          .eq('id', image.id)
+        
+        if (dbError) {
+          console.error('Error deleting image from database:', dbError)
+        }
+      }
+      
+      // Extract path from URL for storage deletion
+      if (image.url) {
+        const urlParts = image.url.split('/')
+        const path = urlParts.slice(-2).join('/') // Get last two parts (user_id/filename)
+        
+        const { error: deleteError } = await supabase.storage
+          .from('listing-images')
+          .remove([path])
 
-    if (deleteError) {
-      console.error('Error deleting image from storage:', deleteError)
+        if (deleteError) {
+          console.error('Error deleting image from storage:', deleteError)
+        }
+      }
+      
+      // Remove from existing images (this will trigger a re-render)
+      const updatedExisting = [...props.existingImages]
+      updatedExisting.splice(index, 1)
+      // Note: We can't directly modify props, so the parent component should handle this
+      // For now, we'll just refresh the page or emit an event
+      window.location.reload()
+    } else {
+      // Removing a newly uploaded image
+      const newlyUploadedIndex = index - existingCount
+      
+      // Delete from Supabase Storage
+      const { error: deleteError } = await supabase.storage
+        .from('listing-images')
+        .remove([image.path])
+
+      if (deleteError) {
+        console.error('Error deleting image from storage:', deleteError)
+      }
+
+      // Remove from newly uploaded array
+      const currentUploaded = [...(props.modelValue || [])]
+      currentUploaded.splice(newlyUploadedIndex, 1)
+      emit('update:modelValue', currentUploaded)
     }
-
-    // Remove from local array
-    images.value.splice(index, 1)
   } catch (err) {
     console.error('Error removing image:', err)
-    // Still remove from local array even if storage deletion fails
-    images.value.splice(index, 1)
   }
 }
 
-const setPrimaryImage = (index) => {
-  // Move the selected image to the first position
-  const [selectedImage] = images.value.splice(index, 1)
-  images.value.unshift(selectedImage)
+const setPrimaryImage = async (index) => {
+  const image = allImages.value[index]
+  const existingCount = props.existingImages.length
+  
+  try {
+    if (index < existingCount) {
+      // Setting an existing image as primary
+      if (image.id) {
+        // First, remove primary flag from all existing images
+        await supabase
+          .from('listing_images')
+          .update({ is_primary: false })
+          .in('id', props.existingImages.map(img => img.id))
+        
+        // Set the selected image as primary
+        await supabase
+          .from('listing_images')
+          .update({ is_primary: true })
+          .eq('id', image.id)
+        
+        // Refresh the page to show updated primary status
+        window.location.reload()
+      }
+    } else {
+      // Setting a newly uploaded image as primary
+      const newlyUploadedIndex = index - existingCount
+      const currentUploaded = [...(props.modelValue || [])]
+      const [selectedImage] = currentUploaded.splice(newlyUploadedIndex, 1)
+      currentUploaded.unshift(selectedImage)
+      emit('update:modelValue', currentUploaded)
+    }
+  } catch (err) {
+    console.error('Error setting primary image:', err)
+  }
 }
 </script>
