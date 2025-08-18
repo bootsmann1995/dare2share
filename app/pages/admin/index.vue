@@ -144,6 +144,12 @@
                     >
                       Manage
                     </button>
+                    <button
+                      @click="confirmDeleteUser(user)"
+                      class="text-red-600 hover:text-red-900"
+                    >
+                      Delete
+                    </button>
                   </td>
                 </tr>
               </tbody>
@@ -262,6 +268,85 @@
         </div>
       </div>
     </div>
+
+    <!-- Delete User Confirmation Modal -->
+    <div v-if="showDeleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+      <div class="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-medium text-red-600">⚠️ Delete User Account</h3>
+            <button @click="closeDeleteModal" class="text-gray-400 hover:text-gray-600">
+              <span class="sr-only">Close</span>
+              <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="space-y-4">
+            <!-- Warning -->
+            <div class="bg-red-50 border border-red-200 rounded-md p-4">
+              <div class="flex">
+                <div class="flex-shrink-0">
+                  <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                  </svg>
+                </div>
+                <div class="ml-3">
+                  <h3 class="text-sm font-medium text-red-800">
+                    This action cannot be undone!
+                  </h3>
+                  <div class="mt-2 text-sm text-red-700">
+                    <p>You are about to permanently delete <strong>{{ userToDelete?.full_name || userToDelete?.email }}</strong> and all their associated data.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Deletion Preview -->
+            <div class="bg-gray-50 p-4 rounded-lg">
+              <h4 class="font-medium text-gray-900 mb-2">Data to be deleted:</h4>
+              <div class="space-y-2">
+                <div v-for="item in deletePreview" :key="item.data_type" class="flex justify-between text-sm">
+                  <span class="text-gray-600">{{ item.data_type }}:</span>
+                  <span class="font-medium text-gray-900">{{ item.count }} {{ item.count === 1 ? 'item' : 'items' }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Confirmation Input -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">
+                Type "DELETE" to confirm:
+              </label>
+              <input
+                v-model="deleteConfirmation"
+                type="text"
+                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                placeholder="Type DELETE to confirm"
+              >
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex justify-end space-x-3 pt-4">
+              <button
+                @click="closeDeleteModal"
+                class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                @click="executeDeleteUser"
+                :disabled="deleting || deleteConfirmation !== 'DELETE'"
+                class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {{ deleting ? 'Deleting...' : 'Delete User' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -273,7 +358,7 @@ definePageMeta({
   middleware: ['auth', 'admin']
 })
 
-const { searchUsers, getUserDetails, updateUserSubscription, getDashboardStats } = useAdminManagement()
+const { searchUsers, getUserDetails, updateUserSubscription, getDashboardStats, deleteUser, previewUserDeletion } = useAdminManagement()
 
 // Reactive data
 const searchTerm = ref('')
@@ -296,6 +381,13 @@ const editForm = ref({
   subscription_start_date: '',
   subscription_end_date: ''
 })
+
+// Delete functionality
+const showDeleteModal = ref(false)
+const userToDelete = ref<UserSearchResult | null>(null)
+const deletePreview = ref<any[]>([])
+const deleting = ref(false)
+const deleteConfirmation = ref('')
 
 // Load initial data
 onMounted(async () => {
@@ -366,6 +458,42 @@ const updateUser = async () => {
 
 const closeModal = () => {
   selectedUser.value = null
+}
+
+// Delete user functions
+const confirmDeleteUser = async (user: UserSearchResult) => {
+  try {
+    userToDelete.value = user
+    deletePreview.value = await previewUserDeletion(user.id)
+    showDeleteModal.value = true
+  } catch (error) {
+    console.error('Error loading delete preview:', error)
+  }
+}
+
+const executeDeleteUser = async () => {
+  if (!userToDelete.value) return
+  
+  try {
+    deleting.value = true
+    await deleteUser(userToDelete.value.id)
+    
+    // Refresh data
+    await handleSearch()
+    await loadStats()
+    closeDeleteModal()
+  } catch (error) {
+    console.error('Error deleting user:', error)
+  } finally {
+    deleting.value = false
+  }
+}
+
+const closeDeleteModal = () => {
+  showDeleteModal.value = false
+  userToDelete.value = null
+  deletePreview.value = []
+  deleteConfirmation.value = ''
 }
 
 // Utility functions

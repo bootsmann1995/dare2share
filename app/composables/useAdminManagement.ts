@@ -76,10 +76,40 @@ export const useAdminManagement = () => {
     }
   }
   
+  // Delete user completely
+  const deleteUser = async (userId: string): Promise<boolean> => {
+    const { data, error } = await supabase.rpc('admin_delete_user_completely', {
+      target_user_id: userId
+    } as any)
+    
+    if (error) {
+      console.error('Error deleting user:', error)
+      throw new Error('Failed to delete user')
+    }
+    
+    return data as boolean
+  }
+  
+  // Preview user deletion
+  const previewUserDeletion = async (userId: string) => {
+    const { data, error } = await supabase.rpc('admin_preview_user_deletion', {
+      target_user_id: userId
+    } as any)
+    
+    if (error) {
+      console.error('Error previewing user deletion:', error)
+      throw new Error('Failed to preview user deletion')
+    }
+    
+    return data || []
+  }
+
   return {
     searchUsers,
     getUserDetails,
     updateUserSubscription,
-    getDashboardStats
+    getDashboardStats,
+    deleteUser,
+    previewUserDeletion
   }
 }
