@@ -9,7 +9,7 @@ export default defineNuxtConfig({
 		redirectOptions: {
 			login: "/auth/login",
 			callback: "/auth/callback",
-			exclude: ["/", "/auth/login", "/auth/register"],
+			exclude: ["/", "/auth/login", "/auth/register", "/auth/reset-password"],
 		},
 		url: process.env.SUPABASE_URL,
 		key: process.env.SUPABASE_ANON_KEY,
