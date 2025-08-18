@@ -256,9 +256,9 @@
 </template>
 
 <script setup>
-// Protect this page - require authentication
+// Protect this page - require authentication and check listing limits
 definePageMeta({
-  middleware: 'auth'
+  middleware: ['auth', 'listing-limit']
 })
 
 const supabase = useSupabaseClient()

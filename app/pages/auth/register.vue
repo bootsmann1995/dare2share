@@ -173,10 +173,11 @@ const signUp = async () => {
 
 const signUpWithGoogle = async () => {
   try {
+    const { getAuthRedirectUrl } = useAppConfig()
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`
+        redirectTo: getAuthRedirectUrl('/auth/callback')
       }
     })
     if (error) throw error

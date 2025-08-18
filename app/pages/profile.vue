@@ -64,6 +64,17 @@
           Ratings
         </button>
         <button
+          @click="activeTab = 'subscription'"
+          :class="[
+            'py-2 px-1 border-b-2 font-medium text-sm',
+            activeTab === 'subscription' 
+              ? 'border-blue-500 text-blue-600' 
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          ]"
+        >
+          Subscription
+        </button>
+        <button
           @click="activeTab = 'settings'"
           :class="[
             'py-2 px-1 border-b-2 font-medium text-sm',
@@ -74,6 +85,18 @@
         >
           Settings
         </button>
+        <button
+          v-if="subscription?.user_role === 'super_user'"
+          @click="activeTab = 'admin'"
+          :class="[
+            'py-2 px-1 border-b-2 font-medium text-sm',
+            activeTab === 'admin' 
+              ? 'border-purple-500 text-purple-600' 
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          ]"
+        >
+          Admin
+        </button>
       </nav>
     </div>
 
@@ -81,9 +104,24 @@
     <div v-if="activeTab === 'listings'">
       <div class="flex justify-between items-center mb-6">
         <h2 class="text-xl font-semibold text-gray-900">My Listings</h2>
-        <NuxtLink to="/listings/create" class="btn-primary">
-          Add New Listing
-        </NuxtLink>
+        <div class="flex items-center gap-3">
+          <NuxtLink 
+            v-if="!subscription || subscription.can_create_more_listings"
+            to="/listings/create" 
+            class="btn-primary"
+          >
+            Add New Listing
+          </NuxtLink>
+          <div v-else class="flex items-center gap-3">
+            <span class="text-sm text-red-600 font-medium">Listing limit reached ({{ subscription.listing_usage_display }})</span>
+            <button 
+              @click="activeTab = 'subscription'" 
+              class="btn-primary"
+            >
+              Upgrade to Premium
+            </button>
+          </div>
+        </div>
       </div>
 
       <div v-if="userListings.length === 0" class="text-center py-12">
@@ -92,9 +130,20 @@
         </svg>
         <h3 class="text-lg font-medium text-gray-900 mb-2">No listings yet</h3>
         <p class="text-gray-600 mb-4">Start earning by listing your first item</p>
-        <NuxtLink to="/listings/create" class="btn-primary">
+        <NuxtLink 
+          v-if="!subscription || subscription.can_create_more_listings"
+          to="/listings/create" 
+          class="btn-primary"
+        >
           Create Your First Listing
         </NuxtLink>
+        <button 
+          v-else
+          @click="activeTab = 'subscription'" 
+          class="btn-primary"
+        >
+          Upgrade to Create Listings
+        </button>
       </div>
 
       <div v-else class="grid md:grid-cols-2 gap-6">
@@ -143,6 +192,47 @@
             🔧 Under maintenance
           </div>
           
+          <!-- Quick Availability Toggle -->
+          <div v-if="listing.status === 'active'" class="mb-3 relative z-20">
+            <div class="flex gap-2">
+              <button
+                v-if="listing.rental_status !== 'available'"
+                @click.stop="toggleAvailability(listing, 'available')"
+                :disabled="updatingAvailability.has(listing.id)"
+                class="flex-1 px-3 py-2 text-sm font-medium rounded-md border-2 border-green-500 text-green-700 bg-green-50 hover:bg-green-100 disabled:opacity-50 transition-colors"
+              >
+                <span v-if="updatingAvailability.has(listing.id)" class="flex items-center justify-center">
+                  <svg class="animate-spin -ml-1 mr-1 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Updating...
+                </span>
+                <span v-else class="flex items-center justify-center">
+                  ✅ Mark Available
+                </span>
+              </button>
+              
+              <button
+                v-if="listing.rental_status === 'available'"
+                @click.stop="toggleAvailability(listing, 'maintenance')"
+                :disabled="updatingAvailability.has(listing.id)"
+                class="flex-1 px-3 py-2 text-sm font-medium rounded-md border-2 border-yellow-500 text-yellow-700 bg-yellow-50 hover:bg-yellow-100 disabled:opacity-50 transition-colors"
+              >
+                <span v-if="updatingAvailability.has(listing.id)" class="flex items-center justify-center">
+                  <svg class="animate-spin -ml-1 mr-1 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Updating...
+                </span>
+                <span v-else class="flex items-center justify-center">
+                  🔧 Mark Unavailable
+                </span>
+              </button>
+            </div>
+          </div>
+
           <!-- Action Buttons (positioned above the overlay) -->
           <div class="flex gap-2 relative z-20">
             <button 
@@ -232,6 +322,144 @@
       <UserRating :user-id="user?.id" />
     </div>
 
+    <div v-else-if="activeTab === 'subscription'">
+      <h2 class="text-xl font-semibold text-gray-900 mb-6">Subscription & Limits</h2>
+      
+      <div class="space-y-6">
+        <!-- Current Plan Card -->
+        <div class="card">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-medium text-gray-900">Current Plan</h3>
+            <span v-if="subscription" class="px-3 py-1 text-sm font-medium rounded-full" :class="getSubscriptionStatusDisplay(subscription.subscription_status).class">
+              {{ getSubscriptionStatusDisplay(subscription.subscription_status).text }}
+            </span>
+          </div>
+          
+          <div v-if="subscription" class="space-y-4">
+            <div class="flex items-center justify-between">
+              <span class="text-gray-600">Plan Type:</span>
+              <span class="font-medium">{{ getRoleDisplayName(subscription.user_role) }}</span>
+            </div>
+            
+            <div class="flex items-center justify-between">
+              <span class="text-gray-600">Listings Used:</span>
+              <span class="font-medium">{{ subscription.listing_usage_display }}</span>
+            </div>
+            
+            <div v-if="subscription.user_role === 'free_user'" class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div class="flex items-start">
+                <svg class="w-5 h-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <div>
+                  <h4 class="text-sm font-medium text-blue-900 mb-1">Free Plan Limits</h4>
+                  <p class="text-sm text-blue-700">You can create up to 2 free listings. Upgrade to Premium for unlimited listings and more features.</p>
+                </div>
+              </div>
+            </div>
+            
+            <div v-if="!subscription.can_create_more_listings && subscription.user_role === 'free_user'" class="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div class="flex items-start">
+                <svg class="w-5 h-5 text-red-600 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                </svg>
+                <div>
+                  <h4 class="text-sm font-medium text-red-900 mb-1">Listing Limit Reached</h4>
+                  <p class="text-sm text-red-700">You've reached your free listing limit. Upgrade to Premium to create unlimited listings.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div v-else class="text-center py-4">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+            <p class="text-gray-600">Loading subscription info...</p>
+          </div>
+        </div>
+
+        <!-- Plan Benefits -->
+        <div class="card">
+          <h3 class="text-lg font-medium text-gray-900 mb-4">Plan Benefits</h3>
+          <div v-if="subscription" class="space-y-2">
+            <div v-for="benefit in getRoleBenefits(subscription.user_role)" :key="benefit" class="flex items-center">
+              <svg class="w-4 h-4 text-green-500 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+              </svg>
+              <span class="text-gray-700">{{ benefit }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Upgrade Options -->
+        <div v-if="subscription && subscription.user_role === 'free_user'" class="card">
+          <h3 class="text-lg font-medium text-gray-900 mb-4">Upgrade to Premium</h3>
+          <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h4 class="text-lg font-semibold text-gray-900">Premium Membership</h4>
+                <p class="text-gray-600">Unlock unlimited listings and premium features</p>
+              </div>
+              <div class="text-right">
+                <div class="text-2xl font-bold text-gray-900">$9.99</div>
+                <div class="text-sm text-gray-600">per month</div>
+              </div>
+            </div>
+            
+            <div class="space-y-2 mb-6">
+              <div class="flex items-center text-sm text-gray-700">
+                <svg class="w-4 h-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                Unlimited listings
+              </div>
+              <div class="flex items-center text-sm text-gray-700">
+                <svg class="w-4 h-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                Direct contact with renters
+              </div>
+              <div class="flex items-center text-sm text-gray-700">
+                <svg class="w-4 h-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                Priority listing placement
+              </div>
+              <div class="flex items-center text-sm text-gray-700">
+                <svg class="w-4 h-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                Advanced search filters
+              </div>
+            </div>
+            
+            <button class="w-full btn-primary">
+              Upgrade to Premium
+            </button>
+          </div>
+        </div>
+
+        <!-- Subscription Management -->
+        <div v-if="subscription && subscription.user_role === 'paid_user'" class="card">
+          <h3 class="text-lg font-medium text-gray-900 mb-4">Subscription Management</h3>
+          <div class="space-y-4">
+            <div v-if="subscription.subscription_end_date" class="flex items-center justify-between">
+              <span class="text-gray-600">Next billing date:</span>
+              <span class="font-medium">{{ new Date(subscription.subscription_end_date).toLocaleDateString() }}</span>
+            </div>
+            
+            <div class="flex gap-3">
+              <button class="btn-secondary">
+                Update Payment Method
+              </button>
+              <button class="btn-danger">
+                Cancel Subscription
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div v-else-if="activeTab === 'settings'">
       <h2 class="text-xl font-semibold text-gray-900 mb-6">Account Settings</h2>
       
@@ -288,6 +516,78 @@
         </div>
       </div>
     </div>
+
+    <!-- Admin Tab -->
+    <div v-else-if="activeTab === 'admin'">
+      <div class="flex justify-between items-center mb-6">
+        <h2 class="text-xl font-semibold text-gray-900">Admin Panel</h2>
+        <NuxtLink to="/admin" class="btn-primary">
+          Go to Full Admin Dashboard
+        </NuxtLink>
+      </div>
+      
+      <div class="grid md:grid-cols-2 gap-6">
+        <!-- Quick Stats -->
+        <div class="card">
+          <h3 class="text-lg font-medium text-gray-900 mb-4">Platform Overview</h3>
+          <div class="space-y-3">
+            <div class="flex justify-between">
+              <span class="text-gray-600">Your Role:</span>
+              <span class="font-medium text-purple-600">Super Admin</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-600">Admin Access:</span>
+              <span class="font-medium text-green-600">Full Access</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-600">Permissions:</span>
+              <span class="font-medium text-blue-600">User Management</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="card">
+          <h3 class="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
+          <div class="space-y-3">
+            <NuxtLink to="/admin" class="block w-full btn-secondary text-center">
+              🔍 Search & Manage Users
+            </NuxtLink>
+            <button class="w-full btn-secondary" disabled>
+              📊 View Analytics (Coming Soon)
+            </button>
+            <button class="w-full btn-secondary" disabled>
+              ⚙️ System Settings (Coming Soon)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Admin Features Info -->
+      <div class="mt-6 card">
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Admin Features</h3>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div>
+            <h4 class="font-medium text-gray-900 mb-2">User Management</h4>
+            <ul class="text-sm text-gray-600 space-y-1">
+              <li>• Search users by email or name</li>
+              <li>• Update user roles and subscriptions</li>
+              <li>• Manage subscription dates</li>
+              <li>• View user statistics</li>
+            </ul>
+          </div>
+          <div>
+            <h4 class="font-medium text-gray-900 mb-2">Platform Control</h4>
+            <ul class="text-sm text-gray-600 space-y-1">
+              <li>• Override subscription limits</li>
+              <li>• Grant premium access manually</li>
+              <li>• Monitor platform usage</li>
+              <li>• Access all user data</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -304,10 +604,21 @@ const userListings = ref([])
 const loadingListings = ref(false)
 const userStats = ref(null)
 
+// Use subscription composable
+const { 
+  userSubscription: subscription, 
+  getRoleDisplayName, 
+  getRoleBenefits, 
+  getSubscriptionStatusDisplay 
+} = useUserSubscription()
+
 // Delete functionality
 const showDeleteModal = ref(false)
 const listingToDelete = ref(null)
 const deletingListings = ref(new Set())
+
+// Availability toggle functionality
+const updatingAvailability = ref(new Set())
 
 // Load user's listings with images
 const loadUserListings = async () => {
@@ -506,6 +817,60 @@ const getRentalStatusText = (rentalStatus) => {
       return '🔧 Maintenance'
     default:
       return 'Unknown'
+  }
+}
+
+// Toggle availability function
+const toggleAvailability = async (listing, newStatus) => {
+  const listingId = listing.id
+  
+  try {
+    // Add to updating set to show loading state
+    updatingAvailability.value.add(listingId)
+    
+    // Prepare update data
+    const updateData = {
+      rental_status: newStatus,
+      updated_at: new Date().toISOString()
+    }
+    
+    // Clear rental-related fields when marking as available
+    if (newStatus === 'available') {
+      updateData.renter_id = null
+      updateData.rental_start_date = null
+      updateData.rented_until = null
+      updateData.rental_notes = null
+    }
+    
+    // Update the listing in the database
+    const { error } = await supabase
+      .from('listings')
+      .update(updateData)
+      .eq('id', listingId)
+      .eq('owner_id', user.value.id) // Extra security check
+    
+    if (error) {
+      throw error
+    }
+    
+    // Update local state
+    const listingIndex = userListings.value.findIndex(l => l.id === listingId)
+    if (listingIndex !== -1) {
+      userListings.value[listingIndex] = {
+        ...userListings.value[listingIndex],
+        ...updateData
+      }
+    }
+    
+    // Show success feedback (you could add a toast notification here)
+    console.log(`Listing availability updated to: ${newStatus}`)
+    
+  } catch (error) {
+    console.error('Error updating availability:', error)
+    alert('Failed to update availability. Please try again.')
+  } finally {
+    // Remove from updating set
+    updatingAvailability.value.delete(listingId)
   }
 }
 

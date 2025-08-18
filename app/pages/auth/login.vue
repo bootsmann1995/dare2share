@@ -217,10 +217,11 @@ const signIn = async () => {
 
 const signInWithGoogle = async () => {
   try {
+    const { getAuthRedirectUrl } = useAppConfig()
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`
+        redirectTo: getAuthRedirectUrl('/auth/callback')
       }
     })
     if (error) throw error
@@ -236,8 +237,9 @@ const sendPasswordReset = async () => {
     resetError.value = ''
     resetSuccess.value = ''
     
+    const { getAuthRedirectUrl } = useAppConfig()
     const { error } = await supabase.auth.resetPasswordForEmail(resetEmail.value, {
-      redirectTo: `${window.location.origin}/auth/reset-password`
+      redirectTo: getAuthRedirectUrl('/auth/reset-password')
     })
     
     if (error) {
