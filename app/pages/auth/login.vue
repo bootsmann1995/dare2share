@@ -47,6 +47,18 @@
           {{ error }}
         </div>
 
+        <div class="flex items-center justify-between">
+          <div class="text-sm">
+            <button
+              type="button"
+              @click="showForgotPassword = true"
+              class="font-medium text-blue-600 hover:text-blue-500"
+            >
+              Forgot your password?
+            </button>
+          </div>
+        </div>
+
         <div>
           <button
             type="submit"
@@ -74,6 +86,62 @@
           </button>
         </div>
       </form>
+
+      <!-- Forgot Password Modal -->
+      <div v-if="showForgotPassword" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+          <div class="mt-3">
+            <h3 class="text-lg font-medium text-gray-900 text-center mb-4">
+              Reset your password
+            </h3>
+            <p class="text-sm text-gray-600 text-center mb-4">
+              Enter your email address and we'll send you a link to reset your password.
+            </p>
+            
+            <form @submit.prevent="sendPasswordReset">
+              <div class="mb-4">
+                <label for="reset-email" class="sr-only">Email address</label>
+                <input
+                  id="reset-email"
+                  v-model="resetEmail"
+                  name="reset-email"
+                  type="email"
+                  autocomplete="email"
+                  required
+                  class="w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  placeholder="Email address"
+                />
+              </div>
+
+              <div v-if="resetError" class="text-red-600 text-sm text-center mb-4">
+                {{ resetError }}
+              </div>
+
+              <div v-if="resetSuccess" class="text-green-600 text-sm text-center mb-4">
+                {{ resetSuccess }}
+              </div>
+
+              <div class="flex space-x-3">
+                <button
+                  type="button"
+                  @click="closeForgotPassword"
+                  class="flex-1 py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  :disabled="resetLoading"
+                  class="flex-1 py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                >
+                  <span v-if="resetLoading">Sending...</span>
+                  <span v-else>Send Reset Link</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -93,6 +161,39 @@ const email = ref('')
 const password = ref('')
 const loading = ref(false)
 const error = ref('')
+
+// Forgot password functionality
+const showForgotPassword = ref(false)
+const resetEmail = ref('')
+const resetLoading = ref(false)
+const resetError = ref('')
+const resetSuccess = ref('')
+
+// Handle URL errors (like expired OTP)
+const route = useRoute()
+
+onMounted(() => {
+  // Check for auth errors in URL parameters
+  const urlError = route.query.error || route.hash?.match(/error=([^&]+)/)?.[1]
+  const errorCode = route.query.error_code || route.hash?.match(/error_code=([^&]+)/)?.[1]
+  const errorDescription = route.query.error_description || route.hash?.match(/error_description=([^&]+)/)?.[1]
+  
+  if (urlError) {
+    if (errorCode === 'otp_expired' || urlError === 'access_denied') {
+      error.value = 'The email link is invalid or has expired. Please request a new password reset or verification email.'
+      // Auto-open forgot password modal if it's a password reset issue
+      if (errorDescription?.includes('Email+link')) {
+        showForgotPassword.value = true
+      }
+    } else {
+      error.value = errorDescription ? decodeURIComponent(errorDescription.replace(/\+/g, ' ')) : 'Authentication error occurred'
+    }
+    
+    // Clean up URL by removing error parameters
+    const cleanUrl = window.location.pathname
+    window.history.replaceState({}, document.title, cleanUrl)
+  }
+})
 
 const signIn = async () => {
   try {
@@ -126,6 +227,43 @@ const signInWithGoogle = async () => {
   } catch (err) {
     error.value = err.message
   }
+}
+
+// Forgot password functions
+const sendPasswordReset = async () => {
+  try {
+    resetLoading.value = true
+    resetError.value = ''
+    resetSuccess.value = ''
+    
+    const { error } = await supabase.auth.resetPasswordForEmail(resetEmail.value, {
+      redirectTo: `${window.location.origin}/auth/reset-password`
+    })
+    
+    if (error) {
+      // Handle specific error cases based on the memory about email verification issues
+      if (error.message.includes('otp_expired') || error.message.includes('invalid') || error.message.includes('expired')) {
+        resetError.value = 'The reset link is invalid or has expired. Please try again.'
+      } else {
+        resetError.value = error.message
+      }
+    } else {
+      resetSuccess.value = 'Password reset email sent! Check your inbox and follow the instructions.'
+      resetEmail.value = ''
+    }
+  } catch (err) {
+    resetError.value = err.message
+  } finally {
+    resetLoading.value = false
+  }
+}
+
+const closeForgotPassword = () => {
+  showForgotPassword.value = false
+  resetEmail.value = ''
+  resetError.value = ''
+  resetSuccess.value = ''
+  resetLoading.value = false
 }
 
 useHead({
